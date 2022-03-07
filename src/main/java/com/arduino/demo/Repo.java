@@ -26,8 +26,16 @@ public class Repo {
     
     @Transactional
     public void insertArduino(int user_id) {
-    	entityManager.createNativeQuery("insert into components (component_name, component_x, component_y, user_id) values ('arduino',0,0,?)")
+    	entityManager.createNativeQuery("insert into components (component_name, component_x, component_y, component_scale, user_id) values ('arduino',0,0,0.5,?)")
         .setParameter(1, user_id)
+        .executeUpdate();
+    }
+    
+    @Transactional
+    public void insertComponent(int user_id, String componentName) {
+    	entityManager.createNativeQuery("insert into components (component_name, component_x, component_y, component_scale, user_id) values (?,0,0,0.5,?)")
+        .setParameter(1, componentName)
+        .setParameter(2, user_id)
         .executeUpdate();
     }
     
@@ -37,6 +45,13 @@ public class Repo {
         .setParameter(1, component_x)
         .setParameter(2, component_y)
         .setParameter(3, component_id)
+        .executeUpdate();
+    }
+    
+    @Transactional
+    public void deleteComponent(int component_id) {
+    	entityManager.createNativeQuery("delete from components where component_id = ?")
+        .setParameter(1, component_id)
         .executeUpdate();
     }
     

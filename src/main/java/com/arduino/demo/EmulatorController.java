@@ -69,7 +69,6 @@ public class EmulatorController {
 		int i = 0;
 		for (String val : components) {
 			if (val.equals("|")) {
-				System.out.println(Arrays.toString(componentVals));
 				repo.updateComponent(componentVals[0], componentVals[1], componentVals[2]);
 				componentVals = new Integer[3];
 			}
@@ -77,6 +76,53 @@ public class EmulatorController {
 				componentVals[i] = (int)Math.round(Double.parseDouble(val));
 				i++;
 			}
+		}
+		
+		return new RedirectView("/");
+	}
+	
+	@RequestMapping(value="/addComponent", method = RequestMethod.GET)
+	public RedirectView addRedirect(Model model) {
+		return new RedirectView("/");
+    }
+	
+	@RequestMapping(value="/addComponent", method = RequestMethod.POST)
+	public RedirectView addComponent(@RequestParam(name = "newComponent") String componentName, HttpSession session, Model model) {
+		if (session.getAttribute("username") != null) {
+			String currUser = session.getAttribute("username").toString();
+			Integer userID = null;
+			try {
+				userID = repo.getUserID(currUser);
+			}
+			catch(Exception e) {
+				session.removeAttribute("username");
+				currUser = null;
+			}
+			repo.insertComponent(userID, componentName);
+		}
+		
+		return new RedirectView("/");
+	}
+	
+	@RequestMapping(value="/deleteComponent", method = RequestMethod.GET)
+	public RedirectView deleteRedirect(Model model) {
+		return new RedirectView("/");
+    }
+	
+	@RequestMapping(value="/deleteComponent", method = RequestMethod.POST)
+	public RedirectView deleteComponent(@RequestParam(name = "deleteComponent") Integer componentID, HttpSession session, Model model) {
+		if (session.getAttribute("username") != null) {
+			String currUser = session.getAttribute("username").toString();
+			Integer userID = null;
+			try {
+				userID = repo.getUserID(currUser);
+			}
+			catch(Exception e) {
+				session.removeAttribute("username");
+				currUser = null;
+			}
+			System.out.println("DELETE: " + componentID);
+			repo.deleteComponent(componentID);
 		}
 		
 		return new RedirectView("/");

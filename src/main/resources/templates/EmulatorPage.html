@@ -45,6 +45,8 @@
 			<canvas id="myCanvas" style="border:3px solid black;">
 				<img id="arduino" src="arduinoUno.png">
 				<img id="whiteLED" src="whiteLED.png">
+				
+				<img id="delete" src="trash.jpg">
 			</canvas>
 		</div>
 	</body>
@@ -52,7 +54,9 @@
 	<script th:inline="javascript">
 		var arduino;
 		var components = [];
+		var componentBar = [];
     	var wireColors = ['blue', 'green', 'orange', 'purple', 'grey'];
+    	var buttonSize = 50;
 		
     	function viewUserCreation() {
 			location.href = '/?newUser=true';
@@ -79,7 +83,7 @@
     	
 		window.onresize = function() {
     		if (user != null) {
-				redraw(true);
+				redraw();
     		}
 		}
 		
@@ -102,10 +106,47 @@
 			
 			drawArduino(c, ctx, firstInit);
 			drawComponents(c, ctx, firstInit);
+			drawComponentBar(c, ctx, firstInit);
 			if (firstInit) eventListeners(c, ctx);
 		}
 		
+		function drawComponentBar(c, ctx, firstInit) {
+			i = 0;
+			Array.from(c.children).forEach(function(component) {
+				if (component.id != "arduino") {
+					if (firstInit) componentBar.push(new ComponentAdd(component.id, component, i*buttonSize, 0));
+					ctx.drawImage(component, i*buttonSize, 0, buttonSize, buttonSize);
+					
+			    	ctx.beginPath();
+			    	ctx.rect(i*buttonSize, 0, buttonSize, buttonSize);
+			    	ctx.stroke();
+			    	i++;
+				}
+			}, false);
+		}
+		
 		function drawComponents(c, ctx, firstInit) {
+			if (firstInit) {
+				componentsDB.forEach(function(component) {
+			    	var img = document.getElementById(component["name"]);
+			    	var currComponent = new Component(component["id"], component["name"], img, [], component["x"], component["y"], 
+			    			img.naturalWidth*component["scale"], img.naturalHeight*component["scale"], component["scale"]);
+			    	if (currComponent.x < 0) {
+			    		currComponent.x = 0;
+					}
+					if (currComponent.y < buttonSize) {
+						currComponent.y = buttonSize;
+					}
+					if (currComponent.x+currComponent.width > c.width) {
+						currComponent = c.width-currComponent.width;
+					}
+					if (currComponent.y+currComponent.height > c.height) {
+						currComponent.y = c.height-currComponent.height;
+					}
+			    	components.push(currComponent);
+				}, false);
+			}
+			
 		    components.forEach(function(component) {
 				ctx.drawImage(component.img, component.x, component.y, component.width, component.height);
 	
@@ -146,11 +187,25 @@
 			//store arduino position and size
 			if (firstInit) {
 				arduino = new Arduino(0, null, [], 0, 0, 0, 0, 0.5);
-				console.log(arduinoDB);
 				arduino.id = arduinoDB["id"];
 				arduino.img = document.getElementById("arduino");
 				arduino.x = arduinoDB["x"];
 				arduino.y = arduinoDB["y"];
+				arduino.scale = arduinoDB["scale"];
+				
+				if (arduino.x < 0) {
+					arduino.x = 0;
+				}
+				if (arduino.y < buttonSize) {
+					arduino.y = buttonSize;
+				}
+				if (arduino.x+arduino.width > c.width) {
+					arduino.x = c.width-arduino.width;
+				}
+				if (arduino.y+arduino.height > c.height) {
+					arduino.y = c.height-arduino.height;
+				}
+				
 				arduino.width = arduino.img.naturalWidth*arduino.scale;
 				arduino.height = arduino.img.naturalHeight*arduino.scale;
 			}
@@ -262,7 +317,7 @@
 			            initPosY = component.y;
 			    	}
 			    }
-
+			    
 			    //check components first
 			    components.forEach(function(component) {
 			    	if (pinPressed == null && componentDrag == null) {
@@ -362,13 +417,11 @@
 				if (pinPressed != null) {
 					ctx.clearRect(0, 0, c.width, c.height);
 					redraw();
-					console.log(pinPressed);
 					
 					drawWire(pinPressed.component, pressedX, pressedY, arduino, x, y);
 				}
 				else if (componentDrag != null) {
 					ctx.clearRect(0, 0, c.width, c.height);
-					redraw();
 
 					componentDrag.x = (x-pressedX)+ initPosX;
 					componentDrag.y = (y-pressedY)+ initPosY;
@@ -376,8 +429,8 @@
 					if (componentDrag.x < 0) {
 						componentDrag.x = 0;
 					}
-					if (componentDrag.y < 0) {
-						componentDrag.y = 0;
+					if (componentDrag.y < buttonSize) {
+						componentDrag.y = buttonSize;
 					}
 					if (componentDrag.x+componentDrag.width > c.width) {
 						componentDrag.x = c.width-componentDrag.width;
@@ -385,30 +438,88 @@
 					if (componentDrag.y+componentDrag.height > c.height) {
 						componentDrag.y = c.height-componentDrag.height;
 					}
+					redraw();
+					
+					//draw outline if hovering over trash
+			   		componentBar.forEach(function(component) {
+				    	if (x > component.x && x < component.x + buttonSize &&
+			        		y > component.y && y < component.y + buttonSize && component.name == "delete") {
+							ctx.lineWidth = 3;
+							ctx.strokeStyle = 'red';
+				    		ctx.beginPath();
+							ctx.rect(componentDrag.x, componentDrag.y, componentDrag.width, componentDrag.height);
+							ctx.stroke();
+				    	}
+					});
 				}
-			}, false);
+			});
 			
 			
 			//clear current drawing if mouse raised or left
 			c.addEventListener('mouseup', function(event) {
-				if (pinPressed != null) pinPressed = null;
-				if (componentDrag != null) componentDrag = null;
-				
-				form = document.createElement('form');
-				form.method = 'post';
-				form.action = '/save';
-				
-				sentData = [];
-				sentData.push([arduino.id, arduino.x, arduino.y, "|"]);
-				
-				componentField = document.createElement('input');
-				componentField.type = 'hidden';
-				componentField.name = 'components';
-				componentField.value = sentData;
-				form.appendChild(componentField);
+				var submit = false;
+			    var x = event.clientX - c.getBoundingClientRect().left;
+			    var y = event.clientY - c.getBoundingClientRect().top;
+			    
+    			//check component bar first
+		   		componentBar.forEach(function(component) {
+			    	if (x > component.x && x < component.x + buttonSize &&
+		        		y > component.y && y < component.y + buttonSize) {
+			    		if (component.name == "delete") {
+			    			console.log("DELETE");
+			    			form = document.createElement('form');
+							form.method = 'post';
+							form.action = '/deleteComponent';
+							
+							componentField = document.createElement('input');
+							componentField.type = 'hidden';
+							componentField.name = 'deleteComponent';
+							componentField.value = componentDrag.id;
+							form.appendChild(componentField);
 
-				document.body.appendChild(form);
-				form.submit();
+							document.body.appendChild(form);
+							form.submit();
+			    		}
+			    		else {
+				    		form = document.createElement('form');
+							form.method = 'post';
+							form.action = '/addComponent';
+							
+							componentField = document.createElement('input');
+							componentField.type = 'hidden';
+							componentField.name = 'newComponent';
+							componentField.value = component.name;
+							form.appendChild(componentField);
+
+							document.body.appendChild(form);
+							form.submit();
+			    		}
+			    		submit = true;
+			    	}
+				});
+			    
+    			if (!submit) {
+					if (pinPressed != null) pinPressed = null;
+					else if (componentDrag != null) {
+						form = document.createElement('form');
+						form.method = 'post';
+						form.action = '/save';
+						
+						sentData = [];
+						sentData.push([componentDrag.id, componentDrag.x, componentDrag.y, "|"]);
+						
+						componentField = document.createElement('input');
+						componentField.type = 'hidden';
+						componentField.name = 'components';
+						componentField.value = sentData;
+						form.appendChild(componentField);
+	
+						document.body.appendChild(form);
+						componentDrag = null;
+						form.submit();
+					}
+    			}
+				
 				
 				ctx.clearRect(0, 0, c.width, c.height);
 				redraw();
@@ -458,6 +569,15 @@
 			    this.height = height;
 			    this.width = width;
 			    this.scale = scale;
+	  		}
+		}
+		
+		class ComponentAdd {
+			constructor(name, img, x, y) {
+			    this.name = name;
+			    this.img = img;
+			    this.x = x;
+			    this.y = y;
 	  		}
 		}
 	</script>

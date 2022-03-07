@@ -12,6 +12,7 @@ public class Component {
     private String component_name;
     private Integer component_x;
     private Integer component_y;
+    private double component_scale;
     private Integer user_id;
     
     public int getID() {
@@ -28,6 +29,10 @@ public class Component {
     
     public int getY() {
     	return component_y;
+    }
+    
+    public double getScale() {
+    	return component_scale;
     }
     
     @Override
