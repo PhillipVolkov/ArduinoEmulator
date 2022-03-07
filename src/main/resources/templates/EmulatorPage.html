@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="ISO-8859-1">
+		<title>Arduino Emulator</title>
+        <link href="static.css" rel="stylesheet"/>
+	</head>
+	
+	<body>
+    	<div class="topnav" id="topnav">
+			<a class="topnavElem" href="/">Arduino Emulator</a>
+			<a class="topnavElem" th:if="${user} != null" th:text="${user}" href="/logout"></a>
+		</div>
+		
+		<div th:if="${user} == null">
+			<div th:if="${newUser} == false">
+				<form name="loginForm" method="POST" action="/user">
+					<h3>Login</h3>
+					<input type="hidden" name="newUser" value="false">
+					<input type="text" name="username" placeholder="Username"> <br>
+					<input type="password" name="password" placeholder="Password"> <br>
+					<input type="submit" value="Submit"> <br>
+				</form>
+				
+				<button onclick="viewUserCreation()">Need a new account?</button>
+			</div>
+			
+			<div th:if="${newUser} == true">
+				<form name="newAccountForm" method="POST" action="/user">
+					<h3>Create new account</h3>
+					<input type="hidden" name="newUser" value="true">
+					<input type="text" name="username" placeholder="Username"> <br>
+					<input type="password" name="password" placeholder="Password"> <br>
+					<input type="password" name="passwordConfirm" placeholder="Confirm Password"> <br>
+					<input type="submit" value="Submit"> <br>
+				</form>
+				
+				<button onclick="hideUserCreation()">Already have an account?</button>
+			</div>
+			
+			<p th:text="${errorMessage}"></p>
+		</div>
+		
+		<div th:if="${user} != null">
+			<canvas id="myCanvas" style="border:3px solid black;">
+				<img id="arduino" src="arduinoUno.png">
+				<img id="whiteLED" src="whiteLED.png">
+			</canvas>
+		</div>
+	</body>
+	
+	<script th:inline="javascript">
+		var arduino;
+		var components = [];
+    	var wireColors = ['blue', 'green', 'orange', 'purple', 'grey'];
+		
+    	function viewUserCreation() {
+			location.href = '/?newUser=true';
+		}
+    	function hideUserCreation() {
+			location.href = '/';
+		}
+    	
+    	/*[+
+			var user = [[${user}]];
+    		var arduinoDB = [[${arduino}]];
+    		var componentsDB = [[${components}]];
+		+]*/
+    	
+		window.onload = function() {
+    		if (user != null) {
+    			if (arduinoDB == null) {
+    				location.href = "/";
+    			}
+    		
+				redraw(true);
+    		}
+		}
+    	
+		window.onresize = function() {
+    		if (user != null) {
+				redraw(true);
+    		}
+		}
+		
+		function redraw(firstInit=false) {
+			var c = document.getElementById("myCanvas");
+			//adjust canvas resolution to fill arduino
+			c.width = window.innerWidth/2;
+			c.height = window.innerHeight-document.getElementById("topnav").offsetHeight;
+			c.style.width = c.width + "px";
+			c.style.height = c.height + "px";
+			var ctx = c.getContext("2d");
+			
+			//store component position and size
+			/*if (firstInit) {
+				var LEDimg = document.getElementById("whiteLED");
+				var scale = 0.5;
+				var LED = new Component("whiteLED", LEDimg, [], 700, 200, LEDimg.naturalWidth*scale, LEDimg.naturalHeight*scale, scale);
+				components.push(LED);
+			}*/
+			
+			drawArduino(c, ctx, firstInit);
+			drawComponents(c, ctx, firstInit);
+			if (firstInit) eventListeners(c, ctx);
+		}
+		
+		function drawComponents(c, ctx, firstInit) {
+		    components.forEach(function(component) {
+				ctx.drawImage(component.img, component.x, component.y, component.width, component.height);
+	
+				//component hitbox
+		    	ctx.beginPath();
+		    	ctx.rect(component.x, component.y, component.width, component.height);
+		    	ctx.stroke();
+				
+				drawComponentPins(c, ctx, component);
+			}, false);
+		}
+		
+		function drawComponentPins(c, ctx, component) {
+			//pin outlines
+			ctx.lineWidth = 1;
+			ctx.strokeStyle = 'black';
+			
+			component.pins = [];
+			var scale = component.scale;
+			var side = 30*scale;
+			
+			//draw power pin
+			var pin = new Pin("POWER", component, component.x+13*scale, component.y+component.height-side, side, side);
+			component.pins.push(pin);
+			ctx.beginPath();
+			ctx.rect(pin.x, pin.y, pin.width, pin.height);
+			ctx.stroke();
+			
+			//draw GND pin
+			var pin = new Pin("GND", component, component.x+59*scale, component.y+component.height-side-20, side, side);
+			component.pins.push(pin);
+			ctx.beginPath();
+			ctx.rect(pin.x, pin.y, pin.width, pin.height);
+			ctx.stroke();
+		}
+		
+		function drawArduino(c, ctx, firstInit) {
+			//store arduino position and size
+			if (firstInit) {
+				arduino = new Arduino(0, null, [], 0, 0, 0, 0, 0.5);
+				console.log(arduinoDB);
+				arduino.id = arduinoDB["id"];
+				arduino.img = document.getElementById("arduino");
+				arduino.x = arduinoDB["x"];
+				arduino.y = arduinoDB["y"];
+				arduino.width = arduino.img.naturalWidth*arduino.scale;
+				arduino.height = arduino.img.naturalHeight*arduino.scale;
+			}
+
+			ctx.drawImage(arduino.img, arduino.x, arduino.y, arduino.width, arduino.height);
+
+			//arduino hitbox
+	    	ctx.beginPath();
+	    	ctx.rect(arduino.x, arduino.y, arduino.width, arduino.height);
+	    	ctx.stroke();
+			
+	    	drawArduinoPins(c, ctx);
+		}
+		
+		function drawArduinoPins(c, ctx) {
+			//pin outlines
+			ctx.lineWidth = 1;
+			ctx.strokeStyle = 'black';
+			
+			arduino.pins = [];
+			var scale = arduino.scale;
+			
+			//draw AREF-P8
+			var names = ["", "", "AREF", "GND", "13", "12", "11", "10", "9", "8"];
+			for (i = 0; i < 10; i++) {
+				var pin = new Pin(names.shift(), arduino, (333+32.5*i)*scale+arduino.x, 36*scale+arduino.y, 31.5*scale, 31*scale);
+				arduino.pins.push(pin);
+				
+				ctx.beginPath();
+				ctx.rect(pin.x, pin.y, pin.width, pin.height);
+				ctx.stroke();
+			}
+			
+			//draw P7-P0
+			var names = ["7", "6", "5", "4", "3", "2", "1", "0"];
+			for (i = 0; i < 8; i++) {
+				var pin = new Pin(names.shift(), arduino, (677+32.5*i)*scale+arduino.x, 36*scale+arduino.y, 31.5*scale, 31*scale);
+				arduino.pins.push(pin);
+				
+				ctx.beginPath();
+				ctx.rect(pin.x, pin.y, pin.width, pin.height);
+				ctx.stroke();
+			}
+			
+			//draw IOREF-VIN
+			var names = ["", "IOREF", "RESET", "3V3", "5V", "GND", "GND", "VIN"];
+			for (i = 0; i < 8; i++) {
+				var pin = new Pin(names.shift(), arduino, (450+32.5*i)*scale+arduino.x, 653*scale+arduino.y, 31.5*scale, 31*scale);
+				arduino.pins.push(pin);
+				
+				ctx.beginPath();
+				ctx.rect(pin.x, pin.y, pin.width, pin.height);
+				ctx.stroke();
+			}
+			
+			//draw A0-A5
+			var names = ["A0", "A1", "A2", "A3", "A4", "A5"];
+			for (i = 0; i < 6; i++) {
+				var pin = new Pin(names.shift(), arduino, (742+32.5*i)*scale+arduino.x, 653*scale+arduino.y, 31.5*scale, 31*scale);
+				arduino.pins.push(pin);
+				
+				ctx.beginPath();
+				ctx.rect(pin.x, pin.y, pin.width, pin.height);
+				ctx.stroke();
+			}
+		}
+		
+		function eventListeners(c, ctx) {
+			var pinPressed = null;
+			var componentDrag = null;
+			var pressedX = -1;
+			var pressedY = -1;
+			var initPosX = -1;
+			var initPosY = -1;
+			
+			var wireWidth = -1;
+			var wireColor = 'black';
+			
+			//canvas event listener
+			c.addEventListener('mousedown', function(event) {
+			    var x = event.clientX - c.getBoundingClientRect().left;
+			    var y = event.clientY - c.getBoundingClientRect().top;
+			    
+			    //drawing wire from a pin
+			    function drawWire(pin) {
+					if (x > pin.x && x < pin.x + pin.width &&
+		        		y > pin.y && y < pin.y + pin.height) {
+			            pinPressed = pin;
+			            pressedX = pin.x + pin.width/2;
+			            pressedY = pin.y + pin.height/2;
+			            
+			            wireWidth = pin.width/2;
+			            
+			            if (pin.name == "GND") wireColor = 'black';
+			            else if (pin.name == "5V" || pin.name == "3V3" || pin.name == "POWER") wireColor = 'red';
+			            else wireColor = wireColors[Math.floor(Math.random() * wireColors.length)];
+			        }
+				}
+			    
+			    //moving component
+			    function moveComponent(component) {
+			    	if (x > component.x && x < component.x + component.width &&
+		        		y > component.y && y < component.y + component.height) {
+			    		componentDrag = component;
+			    		
+			            pressedX = x;
+			            pressedY = y;
+			            initPosX = component.x;
+			            initPosY = component.y;
+			    	}
+			    }
+
+			    //check components first
+			    components.forEach(function(component) {
+			    	if (pinPressed == null && componentDrag == null) {
+			    		component.pins.forEach(function(pin) {
+					    	drawWire(pin);
+					    });
+				    }
+			    	if (pinPressed == null && componentDrag == null) moveComponent(component);
+			    });
+			    
+			    //check arduino next:
+			    //check if pin has been clicked, and set variables as necessary
+			    if (pinPressed == null && componentDrag == null) {
+				    arduino.pins.forEach(function(pin) {
+				    	drawWire(pin);
+				    });
+			    }
+			    //check if arduino has been clicked, and set variables as necessary
+			    if (pinPressed == null && componentDrag == null) {
+			    	moveComponent(arduino);
+			    }
+			}, false);
+			
+			function drawWire(fromComponent, fromX, fromY, toComponent, toX, toY) {
+				//draw wire line
+				ctx.strokeStyle = wireColor;
+				ctx.fillStyle = wireColor;
+				ctx.lineWidth = wireWidth;
+				ctx.beginPath();
+				ctx.moveTo(pressedX, pressedY);
+				
+				//get wire out of component boundaries ASAP
+				var lastY = -1;
+				if (pressedY > fromComponent.height/2+fromComponent.y) {
+					lastY = fromComponent.height+fromComponent.y+60*fromComponent.scale;
+				}
+				else {
+					lastY = fromComponent.y-60*fromComponent.scale;
+				}
+				ctx.lineTo(fromX, lastY);
+				
+				//snap below arduino
+				if (toY > toComponent.height/2+toComponent.y) {
+					var arduinoSnap = toComponent.height+toComponent.y+60*toComponent.scale;
+					//make sure wire doesn't intersect component
+					if (lastY < arduinoSnap) {
+						var offset = (fromComponent.x+fromComponent.width)-fromX;
+						var offset1 = (fromComponent.x)-fromX;
+						if (-offset1 < offset) offset = offset1;
+						
+						ctx.lineTo(fromX+offset, lastY);
+						ctx.lineTo(fromX+offset, arduinoSnap);
+						ctx.lineTo(toX, arduinoSnap);
+					}
+					else {
+						ctx.lineTo(fromX, arduinoSnap);
+						ctx.lineTo(toX, arduinoSnap);
+					}
+					
+					ctx.lineTo(toX, toY);
+				}
+				//snap above arduino
+				else {
+					var arduinoSnap = arduino.y-60*arduino.scale;
+					//make sure wire doesn't intersect component
+					if (lastY > arduinoSnap) {
+						var offset = (pinPressed.component.x+pinPressed.component.width)-pressedX;
+						var offset1 = (pinPressed.component.x)-pressedX;
+						if (-offset1 < offset) offset = offset1;
+						
+						ctx.lineTo(pressedX+offset, lastY);
+						ctx.lineTo(pressedX+offset, arduinoSnap);
+						ctx.lineTo(toX, arduinoSnap);
+					}
+					else {
+						ctx.lineTo(pressedX, arduinoSnap);
+						ctx.lineTo(toX, arduinoSnap);
+					}
+					
+					ctx.lineTo(toX, toY);
+				}
+				
+				ctx.stroke();
+
+				//draw wire connection circle
+				ctx.beginPath();
+				ctx.lineWidth = 1;
+				ctx.arc(pressedX, pressedY, (wireWidth-1)/2, 0, 2 * Math.PI);
+				ctx.fill();
+				ctx.stroke();
+			}
+			
+			c.addEventListener('mousemove', function(event) {
+			    var x = event.clientX - c.getBoundingClientRect().left;
+			    var y = event.clientY - c.getBoundingClientRect().top;
+			    
+				if (pinPressed != null) {
+					ctx.clearRect(0, 0, c.width, c.height);
+					redraw();
+					console.log(pinPressed);
+					
+					drawWire(pinPressed.component, pressedX, pressedY, arduino, x, y);
+				}
+				else if (componentDrag != null) {
+					ctx.clearRect(0, 0, c.width, c.height);
+					redraw();
+
+					componentDrag.x = (x-pressedX)+ initPosX;
+					componentDrag.y = (y-pressedY)+ initPosY;
+					
+					if (componentDrag.x < 0) {
+						componentDrag.x = 0;
+					}
+					if (componentDrag.y < 0) {
+						componentDrag.y = 0;
+					}
+					if (componentDrag.x+componentDrag.width > c.width) {
+						componentDrag.x = c.width-componentDrag.width;
+					}
+					if (componentDrag.y+componentDrag.height > c.height) {
+						componentDrag.y = c.height-componentDrag.height;
+					}
+				}
+			}, false);
+			
+			
+			//clear current drawing if mouse raised or left
+			c.addEventListener('mouseup', function(event) {
+				if (pinPressed != null) pinPressed = null;
+				if (componentDrag != null) componentDrag = null;
+				
+				form = document.createElement('form');
+				form.method = 'post';
+				form.action = '/save';
+				
+				sentData = [];
+				sentData.push([arduino.id, arduino.x, arduino.y, "|"]);
+				
+				componentField = document.createElement('input');
+				componentField.type = 'hidden';
+				componentField.name = 'components';
+				componentField.value = sentData;
+				form.appendChild(componentField);
+
+				document.body.appendChild(form);
+				form.submit();
+				
+				ctx.clearRect(0, 0, c.width, c.height);
+				redraw();
+			}, false);
+			
+			c.addEventListener('mouseleave', function(event) {
+				if (pinPressed != null) pinPressed = null;
+				if (componentDrag != null) componentDrag = null;
+
+				ctx.clearRect(0, 0, c.width, c.height);
+				redraw();
+			}, false);
+		}
+		
+		class Arduino {
+			constructor(id, img, pins, x, y, width, height, scale) {
+				this.id = id;
+			    this.img = img;
+			    this.pins = pins;
+			    this.x = x;
+			    this.y = y;
+			    this.height = height;
+			    this.width = width;
+			    this.scale = scale;
+	  		}
+		}
+		
+		class Pin {
+			constructor(name, component, x, y, width, height) {
+				this.name = name;
+				this.component = component;
+				this.x = x;
+				this.y = y;
+				this.height = height;
+				this.width = width;
+			}
+		}
+		
+		class Component {
+			constructor(id, name, img, pins, x, y, width, height, scale) {
+				this.id = id;
+			    this.name = name;
+			    this.img = img;
+			    this.pins = pins;
+			    this.x = x;
+			    this.y = y;
+			    this.height = height;
+			    this.width = width;
+			    this.scale = scale;
+	  		}
+		}
+	</script>
+</html>
