@@ -1,5 +1,6 @@
 package com.arduino.demo;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.view.RedirectView;
 
+import com.arduino.demo.ParsedCodeFolder.CodeParser;
+
 @Controller
 public class EmulatorController {
     @Autowired
@@ -24,7 +27,15 @@ public class EmulatorController {
 		
 		String currUser = null;
 		Component arduino = null;
+		List<Pin> arduinoPins = null;
+		
 		List<Component> components = null;
+		ArrayList<List<Pin>> pins = new ArrayList<>();
+		List<Wire> wires = null;
+		
+		Code code = null;
+		CodeParser parsedCode = null;
+		
 		if (session.getAttribute("username") != null) {
 			currUser = session.getAttribute("username").toString();
 			Integer userID = null;
@@ -44,8 +55,23 @@ public class EmulatorController {
 					repo.insertArduino(userID);
 					arduino = repo.getArduino(userID);
 				}
+				arduinoPins = repo.getPins(arduino.getID());
 				
 				components = repo.getComponents(userID);
+				for (Component c : components) {
+					pins.add(repo.getPins(c.getID()));
+				}
+				wires = repo.getWires(arduino.getID());
+				
+				try {
+					code = repo.getCode(userID);
+				}
+				catch(Exception e) {
+					repo.insertCode(userID, "");
+					code = repo.getCode(userID);
+				}
+				
+				parsedCode = new CodeParser(code);
 			}
 		}
 		
@@ -53,8 +79,37 @@ public class EmulatorController {
 		model.addAttribute("user", currUser);
 		model.addAttribute("arduino", arduino);
 		model.addAttribute("components", components);
+		model.addAttribute("arduinoPins", arduinoPins);
+		model.addAttribute("pins", pins);
+		model.addAttribute("wires", wires);
+		model.addAttribute("code", code);
+		if(parsedCode != null) model.addAttribute("parsedCode", parsedCode.getStructures());
         return "EmulatorPage";
     }
+	
+	@RequestMapping(value="/saveCode", method = RequestMethod.GET)
+	public RedirectView saveCodeRedirect(Model model) {
+		return new RedirectView("/");
+    }
+	
+	@RequestMapping(value="/saveCode", method = RequestMethod.POST)
+	public RedirectView saveCode(@RequestParam(name = "code") String code, HttpSession session, Model model) {
+		if (session.getAttribute("username") != null) {
+			String currUser = session.getAttribute("username").toString();
+			Integer userID = null;
+			try {
+				userID = repo.getUserID(currUser);
+			}
+			catch(Exception e) {
+				session.removeAttribute("username");
+				currUser = null;
+			}
+			
+			repo.updateCode(userID, code);
+		}
+		
+		return new RedirectView("/");
+	}
 	
 	@RequestMapping(value="/save", method = RequestMethod.GET)
 	public RedirectView saveRedirect(Model model) {
@@ -76,6 +131,61 @@ public class EmulatorController {
 				componentVals[i] = (int)Math.round(Double.parseDouble(val));
 				i++;
 			}
+		}
+		
+		return new RedirectView("/");
+	}
+
+	@RequestMapping(value="/addWire", method = RequestMethod.GET)
+	public RedirectView wireRedirect(Model model) {
+		return new RedirectView("/");
+    }
+	
+	@RequestMapping(value="/addWire", method = RequestMethod.POST)
+	public RedirectView addWire(@RequestParam(name = "pins") List<Integer> pins, @RequestParam(name = "width") double width, @RequestParam(name = "color") String color, 
+			HttpSession session, Model model) {
+		if (session.getAttribute("username") != null) {
+			String currUser = session.getAttribute("username").toString();
+			Integer userID = null;
+			try {
+				userID = repo.getUserID(currUser);
+			}
+			catch(Exception e) {
+				session.removeAttribute("username");
+				currUser = null;
+			}
+			
+			width = Math.round(Math.pow(10, 6)*width)/Math.pow(10, 6);
+			
+			//only add wire if there is not one there currently
+			if (repo.getWires(pins.get(0), pins.get(1)).size() == 0) {
+				repo.insertWire(pins.get(0), pins.get(1), width, color);
+			}
+		}
+		
+		return new RedirectView("/");
+	}
+	
+	@RequestMapping(value="/removeWire", method = RequestMethod.GET)
+	public RedirectView wireRemoveRedirect(Model model) {
+		return new RedirectView("/");
+    }
+	
+	@RequestMapping(value="/removeWire", method = RequestMethod.POST)
+	public RedirectView removeWire(@RequestParam(name = "pin") Integer pin, HttpSession session, Model model) {
+		if (session.getAttribute("username") != null) {
+			String currUser = session.getAttribute("username").toString();
+			Integer userID = null;
+			try {
+				userID = repo.getUserID(currUser);
+			}
+			catch(Exception e) {
+				session.removeAttribute("username");
+				currUser = null;
+			}
+			
+			//only remove wire if there is there is one currently
+			repo.deleteWire(pin);
 		}
 		
 		return new RedirectView("/");
@@ -121,7 +231,7 @@ public class EmulatorController {
 				session.removeAttribute("username");
 				currUser = null;
 			}
-			System.out.println("DELETE: " + componentID);
+			repo.deletePins(componentID);
 			repo.deleteComponent(componentID);
 		}
 		

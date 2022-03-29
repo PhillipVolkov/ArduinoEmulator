@@ -1,5 +1,7 @@
 package com.arduino.demo;
  
+import java.awt.Point;
+
 import javax.persistence.*;
  
 @Entity
@@ -37,6 +39,6 @@ public class Component {
     
     @Override
     public String toString() {
-    	return component_name + " [" + component_x + " , " + component_y + "], user:"+user_id;
+    	return component_name + " [" + component_x + "," + component_y + "], user:"+user_id;
     }
 }
